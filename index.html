@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lucky Draw</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Baloo 2', system-ui, sans-serif; }
+  .bg-stage { background: radial-gradient(ellipse at 50% 30%, #2f9cf0 0%, transparent 60%), linear-gradient(180deg,#0b6fd6 0%,#0a58c4 60%,#0a4aa8 100%); }
+  .title-lucky { background: linear-gradient(180deg,#ffe27a,#ffa41b); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 6px #fff; paint-order: stroke fill; filter: drop-shadow(0 6px 0 #e07b00); }
+  .title-draw { background: linear-gradient(180deg,#fff,#8fd3ff); -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-stroke: 6px #1e7fe0; paint-order: stroke fill; filter: drop-shadow(0 6px 0 #0d4fa8); }
+  .panel { background: linear-gradient(180deg,#7fc4f7,#5aa9ec); box-shadow: inset 0 0 0 4px #ffd45c, 0 20px 50px rgba(3,40,110,.5); }
+  .row { height: 64px; }
+  .row .card { background: linear-gradient(180deg,#e6f3ff,#b9dcfb); color: #6f9fce; box-shadow: 0 3px 0 #86b8e6; }
+  .row.active .card { background: linear-gradient(180deg,#ffe27a,#ffb320); color: #7a3d00; box-shadow: 0 0 0 3px #fff3b0, 0 0 26px rgba(255,200,40,.9); transform: scale(1.05); }
+  .btn-draw { background: linear-gradient(180deg,#ffe98a,#ffb81f); color: #0a2f7a; box-shadow: 0 6px 0 #d98a00, 0 12px 24px rgba(0,0,0,.25); }
+  .btn-draw:active:not(:disabled) { transform: translateY(4px); box-shadow: 0 2px 0 #d98a00; }
+  .btn-draw:disabled { filter: grayscale(.4) brightness(.9); cursor: not-allowed; }
+  .step-btn { background: rgba(255,255,255,.2); }
+  .step-btn:hover:not(:disabled) { background: rgba(255,255,255,.35); }
+  .step-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .conf { position: fixed; top: 0; left: 0; width: 10px; height: 16px; pointer-events: none; z-index: 60; }
+  @keyframes float { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-10px);} }
+  .float { animation: float 3s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .float { animation: none; } }
+</style>
+</head>
+<body class="bg-stage min-h-screen overflow-x-hidden text-white">
+
+<main class="min-h-screen flex flex-col items-center justify-center px-4 py-8">
+  <div class="text-center mb-4">
+    <div class="float text-5xl leading-none" aria-hidden="true">👑</div>
+    <h1 class="text-6xl sm:text-7xl font-extrabold -mt-1 tracking-tight" id="title">
+      <span class="title-lucky">Lucky</span> <span class="title-draw">Draw</span>
+    </h1>
+  </div>
+
+  <!-- Pengaturan jumlah pemenang -->
+  <div class="flex items-center gap-3 mb-6 rounded-full bg-white/15 px-4 py-2">
+    <span class="font-semibold">Jumlah pemenang</span>
+    <button id="minus" class="step-btn h-9 w-9 rounded-full text-2xl font-bold leading-none" aria-label="Kurangi">−</button>
+    <span id="countLabel" class="w-8 text-center text-2xl font-extrabold"></span>
+    <button id="plus" class="step-btn h-9 w-9 rounded-full text-2xl font-bold leading-none" aria-label="Tambah">+</button>
+  </div>
+
+  <!-- Display drawer: jumlahnya mengikuti jumlah pemenang -->
+  <div id="reels" class="flex flex-wrap justify-center gap-6 w-full max-w-[1400px]"></div>
+
+  <!-- Satu tombol untuk semua display -->
+  <button id="drawBtn" class="btn-draw mt-8 w-full max-w-xs rounded-2xl py-3 text-4xl font-extrabold transition-transform">Draw</button>
+  <p id="status" class="mt-3 text-sm text-white/80 min-h-5"></p>
+</main>
+
+<!-- Modal daftar pemenang -->
+<div id="modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="modalCard" class="w-full max-w-md rounded-3xl bg-white text-slate-800 p-7 shadow-2xl">
+    <div class="text-center text-5xl">🎉</div>
+    <h2 id="modalTitle" class="text-center text-2xl font-extrabold text-blue-700">Selamat kepada para pemenang</h2>
+    <ol id="winList" class="mt-4 space-y-2 max-h-[50vh] overflow-y-auto"></ol>
+    <button id="closeBtn" class="btn-draw mt-6 w-full rounded-2xl py-2 text-2xl font-extrabold">Tutup</button>
+  </div>
+</div>
+
+<script>
+/* ---------- Data dummy (ganti dengan data dari API) ---------- */
+const participants = [
+  "Andi Pratama", "Siti Rahma", "Budi Santoso", "Dewi Lestari", "Rizky Hidayat",
+  "Putri Ayu", "Agus Setiawan", "Nur Aini", "Fajar Nugroho", "Maya Sari",
+  "Hendra Wijaya", "Lina Marlina", "Doni Kurniawan", "Rina Melati", "Yusuf Ramadhan",
+  "Tia Anggraini", "Wahyu Prakoso", "Citra Dewanti", "Eko Susanto", "Bella Safitri"
+];
+const prizes = ["Motor Listrik", "Voucher Listrik Rp5.000.000", "Voucher Belanja Rp1.000.000", "Kulkas 2 Pintu", "Smart TV", "Mesin Cuci", "Kompor Induksi", "BYD M6", "Voucher Belanja Rp1.000.000", "Voucher Listrik Rp5.000.000"];
+
+/* ---------- Konfigurasi ---------- */
+let winnerCount = 3;                       // <- ubah default di sini (atau lewat tombol +/-)
+const MAX_WINNERS = Math.min(10, participants.length);
+const ROW_H = 64, CENTER = 2, REPEAT = 9, N = participants.length;
+
+const $ = id => document.getElementById(id);
+const reelsBox = $('reels'), drawBtn = $('drawBtn'), modal = $('modal');
+let reels = [];
+let spinning = false;
+
+/* ---------- Membangun display sesuai jumlah pemenang ---------- */
+function buildReels(count) {
+  reelsBox.innerHTML = '';
+  reels = [];
+  for (let i = 0; i < count; i++) {
+    const wrap = document.createElement('div');
+    wrap.className = 'relative w-[230px] shrink-0';
+    wrap.innerHTML = `
+      <div class="panel rounded-3xl p-3">
+        <div class="viewport relative overflow-hidden rounded-2xl" style="height:${ROW_H * 5}px">
+          <div class="strip absolute inset-x-0 top-0 will-change-transform"></div>
+        </div>
+      </div>
+      <div class="arrow-l absolute left-[-10px] top-1/2 -translate-y-1/2 w-0 h-0 border-y-[14px] border-y-transparent border-l-[20px] border-l-yellow-300 drop-shadow"></div>
+      <div class="arrow-r absolute right-[-10px] top-1/2 -translate-y-1/2 w-0 h-0 border-y-[14px] border-y-transparent border-r-[20px] border-r-yellow-300 drop-shadow"></div>`;
+    reelsBox.appendChild(wrap);
+
+    const strip = wrap.querySelector('.strip');
+    const rows = [];
+    for (let r = 0; r < REPEAT; r++) {
+      participants.forEach(name => {
+        const row = document.createElement('div');
+        row.className = 'row px-1 py-1';
+        row.innerHTML = `<div class="card h-full rounded-xl flex items-center justify-center gap-2 px-2 text-lg font-bold">
+          <span aria-hidden="true">🎁</span><span class="truncate">${name}</span></div>`;
+        strip.appendChild(row);
+        rows.push(row);
+      });
+    }
+    // tiap display mulai dari nama berbeda supaya tidak tampak kembar
+    const reel = { wrap, strip, rows, pos: N * 2 + i * 3, activeEl: null };
+    render(reel, reel.pos);
+    reels.push(reel);
+  }
+  $('countLabel').textContent = count;
+  $('minus').disabled = count <= 1;
+  $('plus').disabled = count >= MAX_WINNERS;
+  $('status').textContent = '';
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    gsap.from(reelsBox.children, { y: 40, opacity: 0, scale: .9, duration: .5, stagger: .08, ease: 'back.out(1.6)' });
+    reels.forEach(r => {
+      gsap.to(r.wrap.querySelector('.arrow-l'), { x: 5, repeat: -1, yoyo: true, duration: .6, ease: 'sine.inOut' });
+      gsap.to(r.wrap.querySelector('.arrow-r'), { x: -5, repeat: -1, yoyo: true, duration: .6, ease: 'sine.inOut' });
+    });
+  }
+}
+
+function render(reel, p) {
+  gsap.set(reel.strip, { y: -(p - CENTER) * ROW_H });
+  const el = reel.rows[Math.round(p)];
+  if (el !== reel.activeEl) {
+    reel.activeEl && reel.activeEl.classList.remove('active');
+    reel.activeEl = el;
+    el.classList.add('active');
+  }
+}
+
+/* ---------- Suara tick (dibatasi agar tidak menumpuk) ---------- */
+let audioCtx, lastTick = 0;
+function tick() {
+  const now = performance.now();
+  if (now - lastTick < 45) return;
+  lastTick = now;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'triangle'; o.frequency.value = 700;
+    g.gain.setValueAtTime(.05, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + .06);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + .06);
+  } catch (e) {}
+}
+
+/* ---------- Pengambilan pemenang: unik, tanpa duplikat ---------- */
+function pickWinners(k) {
+  // Ganti fungsi ini dengan hasil dari API. Yang penting: array index peserta, panjang k, unik.
+  const idx = participants.map((_, i) => i);
+  for (let i = idx.length - 1; i > 0; i--) {           // Fisher-Yates
+    const j = Math.floor(Math.random() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  return idx.slice(0, k);
+}
+
+/* ---------- Satu klik Draw memutar semua display ---------- */
+function draw() {
+  if (spinning) return;
+  spinning = true;
+  setControls(false);
+  closeModal(true);
+  $('status').textContent = 'Mengundi…';
+
+  const winners = pickWinners(winnerCount);
+  let done = 0;
+  gsap.fromTo(drawBtn, { scale: 1 }, { scale: .96, yoyo: true, repeat: 1, duration: .1 });
+
+  reels.forEach((reel, i) => {
+    reel.pos = (Math.round(reel.pos) % N) + N * 2;       // reset ke putaran tengah
+    render(reel, reel.pos);
+    const current = Math.round(reel.pos) % N;
+    const target = reel.pos + N * (4 + i % 2) + ((winners[i] - current + N) % N);
+    const state = { p: reel.pos };
+    let last = Math.round(reel.pos), lastY = 0;
+
+    gsap.to(state, {
+      p: target,
+      duration: 4 + i * 0.7,                             // berhenti bergantian dari kiri ke kanan
+      ease: 'power4.out',
+      onUpdate() {
+        render(reel, state.p);
+        const idx = Math.round(state.p);
+        if (idx !== last) { last = idx; if (i === 0 || done === 0) tick(); }
+        const y = gsap.getProperty(reel.strip, 'y');
+        const speed = Math.abs(y - lastY); lastY = y;
+        reel.strip.style.filter = speed > 20 ? `blur(${Math.min(speed / 20, 3)}px)` : 'none';
+      },
+      onComplete() {
+        reel.pos = target;
+        reel.strip.style.filter = 'none';
+        render(reel, target);
+        gsap.fromTo(reel.activeEl.firstElementChild, { scale: 1.05 }, { scale: 1.14, yoyo: true, repeat: 3, duration: .16, ease: 'sine.inOut',
+          onComplete() { gsap.set(reel.activeEl.firstElementChild, { clearProps: 'transform' }); } });
+        if (++done === reels.length) finish(winners);
+      }
+    });
+  });
+}
+
+function finish(winners) {
+  $('status').textContent = `${winners.length} pemenang terpilih`;
+  confetti();
+  setTimeout(() => openModal(winners), 1000);
+}
+
+function setControls(on) {
+  drawBtn.disabled = !on;
+  $('minus').disabled = !on || winnerCount <= 1;
+  $('plus').disabled = !on || winnerCount >= MAX_WINNERS;
+}
+
+/* ---------- Konfeti ---------- */
+function confetti() {
+  const colors = ['#ffd45c', '#ffffff', '#3aa0ff', '#ff8a3d', '#8fd3ff'];
+  const W = innerWidth, H = innerHeight;
+  for (let i = 0; i < 100; i++) {
+    const el = document.createElement('div');
+    el.className = 'conf';
+    el.style.background = colors[i % colors.length];
+    el.style.borderRadius = Math.random() > .5 ? '50%' : '2px';
+    document.body.appendChild(el);
+    const sx = W / 2 + (Math.random() - .5) * W * .5;
+    gsap.set(el, { x: sx, y: H * .5, rotation: Math.random() * 360 });
+    gsap.to(el, {
+      x: sx + (Math.random() - .5) * W * .8, y: `-=${140 + Math.random() * 280}`,
+      rotation: `+=${Math.random() * 720}`, duration: .7 + Math.random() * .4, ease: 'power2.out',
+      onComplete() {
+        gsap.to(el, { y: H + 40, x: `+=${(Math.random() - .5) * 200}`, rotation: `+=${Math.random() * 720}`,
+          duration: 1.8 + Math.random() * 1.4, ease: 'power1.in', onComplete: () => el.remove() });
+      }
+    });
+  }
+}
+
+/* ---------- Modal daftar pemenang ---------- */
+function openModal(winners) {
+  $('winList').innerHTML = winners.map((w, i) => `
+    <li class="flex items-center gap-3 rounded-xl bg-blue-50 px-3 py-2">
+      <span class="flex h-8 w-8 items-center justify-center rounded-full bg-amber-400 font-extrabold text-white">${i + 1}</span>
+      <span class="flex-1 min-w-0">
+        <span class="block truncate font-bold text-blue-800">${participants[w]}</span>
+        <span class="block truncate text-sm text-amber-600">${prizes[i % prizes.length]}</span>
+      </span>
+    </li>`).join('');
+  modal.classList.remove('hidden'); modal.classList.add('flex');
+  gsap.fromTo('#modalCard', { scale: .6, opacity: 0, y: 40 }, { scale: 1, opacity: 1, y: 0, duration: .5, ease: 'back.out(1.8)' });
+  gsap.fromTo(modal, { opacity: 0 }, { opacity: 1, duration: .25 });
+}
+function closeModal(silent) {
+  if (modal.classList.contains('hidden')) return;
+  modal.classList.add('hidden'); modal.classList.remove('flex');
+  if (!silent) { spinning = false; setControls(true); }
+}
+
+/* ---------- Event ---------- */
+drawBtn.addEventListener('click', draw);
+$('closeBtn').addEventListener('click', () => closeModal());
+$('minus').addEventListener('click', () => { if (!spinning && winnerCount > 1) { winnerCount--; buildReels(winnerCount); } });
+$('plus').addEventListener('click', () => { if (!spinning && winnerCount < MAX_WINNERS) { winnerCount++; buildReels(winnerCount); } });
+
+/* ---------- Awal ---------- */
+buildReels(winnerCount);
+if (!matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  gsap.from('#title', { y: -60, opacity: 0, scale: .7, duration: .8, ease: 'back.out(1.7)' });
+}
+</script>
+</body>
+</html>
